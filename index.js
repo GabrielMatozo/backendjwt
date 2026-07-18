@@ -1,46 +1,39 @@
-// cSpell:Ignore usuario, versao
 require('dotenv').config()
 const express = require("express")
-const bodyParser = require("body-parser")
+const cors = require("cors")
+const helmet = require("helmet")
+const rateLimit = require("express-rate-limit")
 const InicializaMongoServer = require("./config/db")
-//Definindo as rotas da aplicação
+
 const usuario = require("./routes/usuario")
+const produto = require("./routes/Produto")
 
+const app = express()
+const PORT = process.env.PORT || 4000
 
-// Inicializamos o servidor MongoDb
-InicializaMongoServer();
+app.use(helmet())
+app.use(cors())
+app.use(express.json())
 
-const app = express();
-
-// Porta Default
-const PORT = process.env.PORT || 4000;
-
-
-// Exemplo de Middleware 
-app.use(function(req, res, next) {
-   // Em produção, remova o '*' e atualize com o domínio do seu app
-  res.setHeader("Access-Control-Allow-Origin", '*');
-  // Cabeçalhos que serão permitidos
-  res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-access-token");
-  // Métodos que serão permitidos
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-  next();  
-});
-
-// parse application/json
-app.use(bodyParser.json())
-
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { mensagem: "Muitas requisições. Tente novamente em 15 minutos." }
+})
+app.use(limiter)
 
 app.get("/", (req, res) => {
-  res.json({ mensagem: "👏 API 100% funcional!", versao: "1.1.01" });
-});
+  res.json({ mensagem: "API funcional!", versao: "2.0.0" })
+})
 
-/* Rotas do Usuário */
-app.use("/usuario", usuario);
+app.use("/usuario", usuario)
+app.use("/produto", produto)
 
-
-app.listen(PORT, (req, res) => {
-  console.log(`🖥️ Servidor iniciado na porta ${PORT}`);
-});
+InicializaMongoServer()
+  .then(() => app.listen(PORT, () => console.log(`Servidor iniciado na porta ${PORT}`)))
+  .catch(e => {
+    console.error("Falha ao conectar no MongoDB:", e.message)
+    process.exit(1)
+  })
 
 

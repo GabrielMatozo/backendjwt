@@ -1,172 +1,144 @@
-//cSpell:Ignore Usuario
-const express = require("express");
-const { check, validationResult } = require("express-validator");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const router = express.Router();
-const auth = require("../middleware/auth");
+// cSpell:ignore Usuario
+const express = require("express")
+const { check, validationResult } = require("express-validator")
+const bcrypt = require("bcryptjs")
+const jwt = require("jsonwebtoken")
+const router = express.Router()
+const auth = require("../middleware/auth")
+const Usuario = require("../model/Usuario")
+const RefreshToken = require("../model/RefreshToken")
+const { JWT_SECRET, JWT_REFRESH_SECRET } = require("../config/jwt")
 
-const Usuario = require("../model/Usuario");
+const ACCESS_TOKEN_EXPIRY = "1h" // 1 hora
+const REFRESH_TOKEN_EXPIRY_DAYS = 30 // 30 dias
 
-//https://medium.com/tableless/entendendo-tokens-jwt-json-web-token-413c6d1397f6
+function gerarAccessToken(usuarioId) {
+  return jwt.sign(
+    { usuario: { id: usuarioId } },
+    JWT_SECRET,
+    { expiresIn: ACCESS_TOKEN_EXPIRY }
+  )
+}
 
-/**
- * @method - POST
- * @param - /usuario/novo
- * @description - Novo Usuário
- */
+async function gerarRefreshToken(usuarioId) {
+  const refresh = jwt.sign(
+    { usuario: { id: usuarioId } },
+    JWT_REFRESH_SECRET,
+    { expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d` }
+  )
+  const expiresEm = new Date()
+  expiresEm.setDate(expiresEm.getDate() + REFRESH_TOKEN_EXPIRY_DAYS)
+  await new RefreshToken({ token: refresh, usuarioId, expiresEm }).save()
+  return refresh
+}
 
 router.post(
   "/novo",
   [
-    check("nome", "Por favor, informe o nome do usuário").not().isEmpty(),
-    check("avatar", "Não foi possível gerar o avatar do usuário").isEmpty(),
+    check("nome", "Informe o nome do usuário").not().isEmpty(),
     check("email", "Informe um e-mail válido").isEmail(),
-    check("senha", "Informe uma senha com no mínimo 6 caracteres").isLength({min: 6}),
-    check("tipo","Informe um tipo de usuário válido!").isIn(['administrador', 'cliente', 'profissional'])   
+    check("senha", "Senha deve ter no mínimo 6 caracteres").isLength({ min: 6 }),
+    check("tipo", "Tipo inválido").isIn(["administrador", "cliente", "profissional"])
   ],
   async (req, res) => {
-    const errors = validationResult(req);
+    const errors = validationResult(req)
     if (!errors.isEmpty()) {
-      return res.status(400).json({
-        errors: errors.array()
-      });
+      return res.status(400).json({ errors: errors.array() })
     }
 
-    const { nome, email, senha, avatar, tipo } = req.body;
+    const { nome, email, senha, tipo } = req.body
     try {
-      let usuario = await Usuario.findOne({
-        email
-      });
+      let usuario = await Usuario.findOne({ email })
       if (usuario) {
-        return res.status(400).json({
-          mensagem: "O e-mail informado já existe em outro usuário!"
-        });
+        return res.status(400).json({ mensagem: "E-mail já cadastrado" })
       }
 
-      usuario = new Usuario({
-        nome,
-        email,
-        senha,
-        avatar,
-        tipo
-      });
+      usuario = new Usuario({ nome, email, senha, tipo })
+      const salt = await bcrypt.genSalt(10)
+      usuario.senha = await bcrypt.hash(senha, salt)
+      const initials = nome.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2)
+      usuario.avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=random`
+      await usuario.save()
 
-      const salt = await bcrypt.genSalt(10);
-      usuario.senha = await bcrypt.hash(senha, salt);
-      // Criando um avatar randômico com a API Adorable.io
-      usuario.avatar =  'https://api.adorable.io/avatars/256/'+email+'.png'
-      
-
-      await usuario.save();
-      //O Payload é um objeto JSON com as Claims (informações) da entidade tratada, normalmente o usuário autenticado.
-      const payload = {
-        usuario: {
-          id: usuario.id
-        }
-      };
-
-      jwt.sign(
-        payload,
-        process.env.SECRET_KEY,
-        {
-          expiresIn: 21600 // 6 horas
-        },
-        (err, token) => {
-          if (err) throw err;
-          res.status(200).json({
-            token
-          });
-        }
-      );
+      const accessToken = gerarAccessToken(usuario.id)
+      const refreshToken = await gerarRefreshToken(usuario.id)
+      res.status(201).json({ accessToken, refreshToken })
     } catch (err) {
-      //console.log(err.message);   
-      return res.status(500).json({
-        errors: `Erro ao salvar o usuário: ${err.message}`
-      });
+      res.status(500).json({ mensagem: `Erro ao salvar usuário: ${err.message}` })
     }
   }
-);
-/**
- * @method - POST
- * @param - /usuario/login
- * @description - Login do usuário
- */
+)
+
 router.post(
   "/login",
   [
-    check("email", "Por favor, informe um e-mail válido").isEmail(),
-    check("senha", "Informe uma senha com no mínimo 6 caracteres").isLength({
-      min: 6
-    })
+    check("email", "Informe um e-mail válido").isEmail(),
+    check("senha", "Senha deve ter no mínimo 6 caracteres").isLength({ min: 6 })
   ],
   async (req, res) => {
-    const errors = validationResult(req);
-
+    const errors = validationResult(req)
     if (!errors.isEmpty()) {
-      return res.status(400).json({
-        errors: errors.array()
-      });
+      return res.status(400).json({ errors: errors.array() })
     }
 
-    const { email, senha } = req.body;
+    const { email, senha } = req.body
     try {
-      let usuario = await Usuario.findOne({
-        email
-      });
-      if (!usuario)
-        return res.status(400).json({
-          mensagem: "Não existe nenhum usuário com o e-mail informado!"
-        });
+      const usuario = await Usuario.findOne({ email })
+      if (!usuario) {
+        return res.status(400).json({ mensagem: "Usuário não encontrado" })
+      }
 
-      const isMatch = await bcrypt.compare(senha, usuario.senha);
-      if (!isMatch)
-        return res.status(400).json({
-          mensagem: "A senha informada está incorreta !"
-        });
+      const isMatch = await bcrypt.compare(senha, usuario.senha)
+      if (!isMatch) {
+        return res.status(400).json({ mensagem: "Senha incorreta" })
+      }
 
-      const payload = {
-        usuario: {
-          id: usuario.id
-        }
-      };
-
-      jwt.sign(
-        payload,
-        process.env.SECRET_KEY,
-        {
-          expiresIn: 3600
-        },
-        (err, token) => {
-          if (err) throw err;
-          res.status(200).json({
-            token
-          });
-        }
-      );
+      const accessToken = gerarAccessToken(usuario.id)
+      const refreshToken = await gerarRefreshToken(usuario.id)
+      res.json({ accessToken, refreshToken })
     } catch (e) {
-      console.error(e);
-      res.status(500).json({
-        mensagem: `Erro no Servidor: ${e.message}`
-      });
+      // console.error(e)
+      res.status(500).json({ mensagem: `Erro no servidor: ${e.message}` })
     }
   }
-);
+)
 
-/**
- * @method - GET
- * @description - Obter informações do usuário atual
- * @param - /usuario/eu
- */
+router.post("/refresh-token", async (req, res) => {
+  const { refreshToken } = req.body
+  if (!refreshToken) {
+    return res.status(401).json({ mensagem: "Refresh token é obrigatório" })
+  }
+
+  try {
+    const stored = await RefreshToken.findOne({ token: refreshToken })
+    if (!stored) {
+      return res.status(403).json({ mensagem: "Refresh token inválido" })
+    }
+    if (stored.expiresEm < new Date()) {
+      await RefreshToken.deleteOne({ _id: stored._id })
+      return res.status(403).json({ mensagem: "Refresh token expirado" })
+    }
+
+    const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET)
+    const accessToken = gerarAccessToken(decoded.usuario.id)
+    res.json({ accessToken })
+  } catch (e) {
+    res.status(403).json({ mensagem: `Refresh token inválido: ${e.message}` })
+  }
+})
+
+router.post("/logout", auth, async (req, res) => {
+  await RefreshToken.deleteMany({ usuarioId: req.usuario.id })
+  res.json({ mensagem: "Sessão encerrada com sucesso" })
+})
 
 router.get("/eu", auth, async (req, res) => {
   try {
-    // auth garantirá que foi enviado o token.
-    const usuario = await Usuario.findById(req.usuario.id, {senha: 0, criado_em: 0, alterado_em:0, __v:0});
-    res.json(usuario);
+    const usuario = await Usuario.findById(req.usuario.id, { senha: 0, __v: 0 })
+    res.json(usuario)
   } catch (e) {
-    res.send( `Erro ao obter os dados do usuário: ${e.message}` );
+    res.status(500).json({ mensagem: `Erro ao obter dados: ${e.message}` })
   }
-});
+})
 
-module.exports = router;
+module.exports = router
