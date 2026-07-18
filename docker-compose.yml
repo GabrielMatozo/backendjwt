@@ -1,0 +1,22 @@
+services:
+  app:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      - MONGODB_URL=mongodb://mongo:27017/backendjwt
+      - PORT=4000
+      - SECRET_KEY=chave_local_desenvolvimento
+      - REFRESH_SECRET_KEY=refresh_local_desenvolvimento
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:
