@@ -1,29 +1,34 @@
-//Testar as requisições - Schema Usuário
-//Bye, Bye Postman :) (Mas claro, ainda dá para utilizá-lo se preferir)
-//Instale a extensão REST Client no Visual Studio Code para conseguir utilizar este recurso
+@baseUrl = http://localhost:4000
 
 ###
-// GET Usuário atual
-@baseUrl = http://localhost:4001
 GET {{baseUrl}}/usuario/eu
 Content-Type: application/json
-x-access-token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvIjp7ImlkIjoiNWY2YzhjOWMxZmMyOGFiZDZlOTQxYjIyIn0sImlhdCI6MTYwMjc5MDg2OCwiZXhwIjoxNjAyNzk0NDY4fQ.sG_N3fNI2zits0SZeR91bEuXdGMTpMKbTuAQR5293Lk
+x-access-token: SEU_TOKEN_AQUI
+
 ###
-// POST Login Usuário
 POST {{baseUrl}}/usuario/login
 Content-Type: application/json
 
 {
-    "email": "ricardo.leme@gmail.com",
-    "senha": "secreta"}
+    "email": "admin@email.com",
+    "senha": "123456"
+}
 
 ###
-// POST Novo Usuário
 POST {{baseUrl}}/usuario/novo
 Content-Type: application/json
 
 {
-    "nome": "Ricardo Leme",
-    "email": "ricardo.leme@gmail.com",
-    "senha": "secreta",
-    "tipo": "administrador"}
+    "nome": "Admin",
+    "email": "admin@email.com",
+    "senha": "123456",
+    "tipo": "administrador"
+}
+
+###
+POST {{baseUrl}}/usuario/refresh-token
+Content-Type: application/json
+
+{
+    "refreshToken": "SEU_REFRESH_TOKEN_AQUI"
+}
