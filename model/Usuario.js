@@ -12,7 +12,7 @@ const UsuarioSchema = mongoose.Schema({
     unique: true, //Criamos um índice único
     validate: {
             validator: function(email) { //Utilizaremos Regex para validar - \w (word character)
-              return /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(email);
+              return /^[\w.-]+@([\w-]+\.)+[\w-]{2,4}$/.test(email);
             },
             message: props => props.value +' não é um e-mail válido!'
     }    
@@ -22,10 +22,8 @@ const UsuarioSchema = mongoose.Schema({
     required: true
   },
   avatar: {
-    type: String,
-    required: false
+    type: String
   },
-  ativo: { type: Boolean, default: true },
   tipo: {
     type: String,
     enum: ['administrador', 'cliente', 'profissional'],
